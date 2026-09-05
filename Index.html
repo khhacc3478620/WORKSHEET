@@ -287,14 +287,34 @@
 
   /* ---------------- 除錯記錄面板：不管卡在哪一步，畫面上都會直接列出來 ---------------- */
   function dbg(msg) {
+    let wrap = document.getElementById('debug-wrap');
     let el = document.getElementById('debug-log');
-    if (!el) {
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.id = 'debug-wrap';
+      wrap.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;box-shadow:0 2px 6px rgba(0,0,0,.4)';
+
+      const toggleBar = document.createElement('div');
+      toggleBar.id = 'debug-toggle';
+      toggleBar.innerText = '🔽 偵錯畫面（點我收合／展開）';
+      toggleBar.style.cssText = 'background:#000;color:#7CFC00;font-family:monospace;font-size:12px;' +
+        'padding:6px 10px;cursor:pointer;user-select:none;';
+      toggleBar.onclick = function () {
+        const logEl = document.getElementById('debug-log');
+        const collapsed = logEl.style.display === 'none';
+        logEl.style.display = collapsed ? 'block' : 'none';
+        toggleBar.innerText = collapsed ? '🔽 偵錯畫面（點我收合／展開）' : '▶️ 偵錯畫面已收合（點我展開）';
+      };
+      wrap.appendChild(toggleBar);
+
       el = document.createElement('div');
       el.id = 'debug-log';
-      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#111;color:#7CFC00;' +
-        'font-size:11px;line-height:1.5;padding:8px 10px;max-height:45vh;overflow:auto;' +
-        'white-space:pre-wrap;word-break:break-all;font-family:monospace;box-shadow:0 2px 6px rgba(0,0,0,.4)';
-      document.body.prepend(el);
+      el.style.cssText = 'background:#111;color:#7CFC00;' +
+        'font-size:11px;line-height:1.5;padding:8px 10px;max-height:35vh;overflow:auto;' +
+        'white-space:pre-wrap;word-break:break-all;font-family:monospace;';
+      wrap.appendChild(el);
+
+      document.body.prepend(wrap);
     }
     const t = new Date().toLocaleTimeString('zh-TW', { hour12: false });
     el.innerText += '[' + t + '] ' + msg + '\n';
