@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>辦公室待辦事項 APP</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root{
+    --brand:#00b900; --brand-dark:#009900;
+    --danger:#ff4d4f; --danger-bg:#fff1f0;
+    --warning:#faad14; --warning-bg:#fffbe6;
+    --info:#1890ff; --info-bg:#e6f7ff;
+    --low:#52c41a; --low-bg:#f6ffed;
+    --muted:#8c8c8c; --border:#e8e8e8;
+    --bg:#f4f6f8; --card:#ffffff;
+    --radius:14px;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; }
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang TC","Microsoft JhengHei",sans-serif;
+    background:var(--bg); color:#333; margin:0;
+    padding:12px 12px calc(90px + env(safe-area-inset-bottom)) 12px;
+  }
+  /* 表單頁籤的驗證錯誤訊息會讓卡片變高，多留一段緩衝空間，
+     確保「送出」按鈕在任何驗證狀態下都不會被固定的底部導覽列蓋住 */
+  #panel-add{ padding-bottom:70px; }
+  h2,h3{ margin:0 0 12px 0; color:#2c3e50; }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--card); padding:12px 16px; border-radius:var(--radius);
+    margin-bottom:12px; box-shadow:0 2px 8px rgba(0,0,0,.05);
+  }
+  .topbar .user{ display:flex; align-items:center; gap:8px; font-weight:bold; color:var(--brand-dark); font-size:14px; }
+  .topbar .user img{ width:28px; height:28px; border-radius:50%; }
+  .icon-btn{
+    background:#f0f2f5; border:none; width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer;
+  }
+  .icon-btn.spin{ animation:spin 0.8s linear infinite; }
+  @keyframes spin{ from{transform:rotate(0)} to{transform:rotate(360deg)} }
+  .updated-at{ font-size:11px; color:var(--muted); text-align:right; margin:-4px 2px 10px 2px; }
+
+  .card{ background:var(--card); padding:16px; border-radius:var(--radius); margin-bottom:12px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+  .panel{ display:none; }
+  .panel.active{ display:block; }
+
+  .section-title{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .section-title h3{ margin:0; }
+  .count-pill{ background:var(--bg); color:var(--muted); font-size:12px; font-weight:bold; padding:3px 10px; border-radius:20px; }
+  .count-pill.alert{ background:var(--danger-bg); color:var(--danger); }
+
+  .form-group{ margin-bottom:14px; }
+  label{ font-size:14px; font-weight:bold; display:block; margin-bottom:6px; color:#555; }
+  .hint{ font-weight:normal; color:var(--muted); font-size:12px; }
+  input[type="text"], input[type="date"], select{
+    width:100%; padding:11px; border:1px solid #ccc; border-radius:8px; font-size:15px; background:#fff;
+  }
+  input.field-error, select.field-error{ border-color:var(--danger); background:var(--danger-bg); }
+  .error-text{ color:var(--danger); font-size:12px; margin-top:4px; display:none; }
+  .error-text.show{ display:block; }
+
+  .checkbox-group{ background:#fafafa; padding:10px; border-radius:8px; border:1px solid var(--border); max-height:190px; overflow-y:auto; }
+  .checkbox-item{ display:flex; align-items:center; padding:7px 4px; font-size:14px; cursor:pointer; border-radius:6px; }
+  .checkbox-item:active{ background:#f0f0f0; }
+  .checkbox-item input{ margin-right:8px; width:17px; height:17px; flex-shrink:0; }
+  .checkbox-item.disabled{ opacity:.45; cursor:not-allowed; }
+  .checkbox-item .warn-tag{ margin-left:6px; font-size:11px; color:var(--danger); }
+  .member-empty{ color:var(--muted); font-size:13px; text-align:center; padding:10px 0; }
+
+  .btn-submit{ background:var(--brand); color:#fff; border:none; width:100%; padding:13px; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer; }
+  .btn-submit:active{ background:var(--brand-dark); }
+  .btn-submit:disabled{ background:#b8e6b8; }
+
+  .task-item{ background:var(--card); border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; border-left:6px solid var(--border); box-shadow:0 2px 6px rgba(0,0,0,.04); }
+  .task-item.overdue{ border-left-color:var(--danger); }
+  .task-item.today{ border-left-color:var(--info); }
+  .task-item.future{ border-left-color:var(--low); }
+  .task-item.done{ border-left-color:#bfbfbf; opacity:.8; }
+  .task-title{ font-size:16px; font-weight:bold; margin-bottom:8px; display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+  .task-meta{ font-size:13px; color:#666; line-height:1.7; }
+  .task-meta b{ color:#333; }
+  .task-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:10px; }
+
+  .badge{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:bold; }
+  .badge-all{ background:#722ed1; color:#fff; }
+  .badge-prio-高{ background:var(--danger-bg); color:var(--danger); }
+  .badge-prio-中{ background:var(--warning-bg); color:#ad6800; }
+  .badge-prio-低{ background:var(--low-bg); color:#237804; }
+  .badge-label{ background:var(--info-bg); color:var(--info); }
+  .badge-overdue{ background:var(--danger); color:#fff; }
+  .badge-today{ background:var(--info); color:#fff; }
+
+  .btn-complete{ background:var(--brand); color:#fff; border:none; padding:9px 16px; border-radius:6px; font-size:13px; font-weight:bold; cursor:pointer; white-space:nowrap; }
+  .btn-complete:active{ background:var(--brand-dark); }
+
+  .empty-state{ text-align:center; color:var(--muted); padding:40px 10px; font-size:14px; }
+  .empty-state .big{ font-size:38px; margin-bottom:8px; }
+  .skeleton{ height:78px; border-radius:var(--radius); background:linear-gradient(90deg,#eee 25%,#f5f5f5 37%,#eee 63%); background-size:400% 100%; animation:sk 1.4s ease infinite; margin-bottom:10px; }
+  @keyframes sk{ 0%{background-position:100% 50%} 100%{background-position:0 50%} }
+
+  .team-member{ margin-bottom:16px; }
+  .team-member-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:#fafafa; border-radius:8px; margin-bottom:8px; cursor:pointer; }
+  .team-member-head .name{ font-weight:bold; font-size:14px; }
+  .team-member-head .stats{ font-size:12px; color:var(--muted); display:flex; gap:8px; }
+  .team-member-head .stats .od{ color:var(--danger); font-weight:bold; }
+  .team-tasks{ padding-left:6px; display:none; }
+  .team-tasks.open{ display:block; }
+  .mini-task{ font-size:13px; padding:8px 10px; border-bottom:1px dashed var(--border); display:flex; justify-content:space-between; gap:8px; }
+  .mini-task:last-child{ border-bottom:none; }
+  .mini-task .t{ flex:1; }
+  .mini-task .d{ color:var(--muted); white-space:nowrap; font-size:12px; }
+  .mini-task.od .d{ color:var(--danger); font-weight:bold; }
+
+  .toast{
+    position:fixed; left:50%; bottom:calc(90px + env(safe-area-inset-bottom)); transform:translate(-50%,10px);
+    background:#333; color:#fff; padding:11px 20px; border-radius:24px; font-size:14px;
+    box-shadow:0 4px 14px rgba(0,0,0,.25); z-index:999; opacity:0; pointer-events:none; transition:.25s;
+    max-width:88%; text-align:center;
+  }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+  .toast.error{ background:var(--danger); }
+
+  .navbar{
+    position:fixed; left:0; right:0; bottom:0; background:var(--card);
+    display:flex; box-shadow:0 -2px 10px rgba(0,0,0,.08); z-index:100;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .nav-btn{
+    flex:1; border:none; background:none; padding:9px 0 7px 0; display:flex; flex-direction:column;
+    align-items:center; gap:2px; color:var(--muted); font-size:11px; cursor:pointer; position:relative;
+  }
+  .nav-btn .ic{ font-size:20px; }
+  .nav-btn.active{ color:var(--brand); font-weight:bold; }
+  .nav-badge{ position:absolute; top:2px; right:calc(50% - 20px); background:var(--danger); color:#fff; font-size:10px; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 4px; }
+
+  .login-status{ font-size:13px; color:var(--muted); }
+</style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="user" id="user-info">🔐 正在登入 LINE…</div>
+    <button class="icon-btn" id="refresh-btn" onclick="loadAll(true)" title="重新整理">🔄</button>
+  </div>
+  <div class="updated-at" id="updated-at"></div>
+
+  <!-- 🚨 逾期/未辦事項 -->
+  <div class="panel" id="panel-overdue">
+    <div class="card">
+      <div class="section-title">
+        <h3>🚨 逾期／未辦事項</h3>
+        <span class="count-pill alert" id="count-overdue">0</span>
+      </div>
+      <div id="list-overdue"><div class="skeleton"></div><div class="skeleton"></div></div>
+    </div>
+  </div>
+
+  <!-- 📅 今日應辦 -->
+  <div class="panel" id="panel-today">
+    <div class="card">
+      <div class="section-title">
+        <h3>📅 今日應辦</h3>
+        <span class="count-pill" id="count-today">0</span>
+      </div>
+      <div id="list-today"><div class="skeleton"></div><div class="skeleton"></div></div>
+    </div>
+    <div class="card">
+      <div class="section-title">
+        <h3>🗓 即將到來</h3>
+        <span class="count-pill" id="count-future">0</span>
+      </div>
+      <div id="list-future"></div>
+    </div>
+  </div>
+
+  <!-- ✅ 已完成 -->
+  <div class="panel" id="panel-done">
+    <div class="card">
+      <div class="section-title">
+        <h3>✅ 已完成事項</h3>
+        <span class="count-pill" id="count-done">0</span>
+      </div>
+      <div id="list-done"><div class="skeleton"></div></div>
+    </div>
+  </div>
+
+  <!-- 👥 團隊看板 -->
+  <div class="panel" id="panel-team">
+    <div class="card">
+      <div class="section-title">
+        <h3>👥 團隊全景看板</h3>
+        <span class="count-pill" id="count-team-overdue">逾期 0</span>
+      </div>
+      <div id="list-team"><div class="skeleton"></div><div class="skeleton"></div></div>
+    </div>
+  </div>
+
+  <!-- ➕ 新增指派 -->
+  <div class="panel" id="panel-add">
+    <div class="card">
+      <h3>➕ 指派新任務</h3>
+
+      <div class="form-group">
+        <label>工作名稱：</label>
+        <input type="text" id="task-title" placeholder="例如：整理月度財務報表">
+        <div class="error-text" id="err-title">請填寫工作名稱</div>
+      </div>
+
+      <div class="form-group">
+        <label>指派對象（可勾選多位同仁）：</label>
+        <div class="checkbox-group" id="member-checkboxes">
+          <div class="member-empty">同仁名單載入中…</div>
+        </div>
+        <div class="error-text" id="err-assignee">請至少勾選一位指派對象（或勾選 @ALL）</div>
+      </div>
+
+      <div class="form-group">
+        <label>截止日期：</label>
+        <input type="date" id="task-date">
+        <div class="error-text" id="err-date">請選擇截止日期</div>
+      </div>
+
+      <div class="form-group">
+        <label>優先級：</label>
+        <select id="task-priority">
+          <option value="中">🟠 中</option>
+          <option value="高">🔴 高（緊急）</option>
+          <option value="低">🟢 低</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>標籤 <span class="hint">（選填，例如：行政／專案A／緊急）</span></label>
+        <input type="text" id="task-label" list="label-suggestions" placeholder="輸入或選擇標籤">
+        <datalist id="label-suggestions">
+          <option value="行政"></option>
+          <option value="專案A"></option>
+          <option value="緊急"></option>
+          <option value="採購"></option>
+          <option value="會議"></option>
+        </datalist>
+      </div>
+
+      <button class="btn-submit" id="submit-btn" onclick="submitNewTask()">送出指派任務</button>
+    </div>
+  </div>
+
+  <!-- 底部導覽列 -->
+  <div class="navbar">
+    <button class="nav-btn active" data-tab="overdue" onclick="switchTab('overdue')">
+      <span class="ic">🚨</span>逾期
+      <span class="nav-badge" id="badge-overdue" style="display:none;">0</span>
+    </button>
+    <button class="nav-btn" data-tab="today" onclick="switchTab('today')">
+      <span class="ic">📅</span>今日
+    </button>
+    <button class="nav-btn" data-tab="done" onclick="switchTab('done')">
+      <span class="ic">✅</span>已完成
+    </button>
+    <button class="nav-btn" data-tab="team" onclick="switchTab('team')">
+      <span class="ic">👥</span>團隊
+    </button>
+    <button class="nav-btn" data-tab="add" onclick="switchTab('add')">
+      <span class="ic">➕</span>新增
+    </button>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+  // ⚠️ 這個檔案現在是放在 GitHub Pages（一般靜態網站）上執行，不再透過
+  // Apps Script 的 doGet 樣板注入這兩個值，所以要直接寫死在這裡。
+  // 如果之後 LIFF_ID（LINE 後台的 LIFF 應用程式 ID）或 GAS_URL
+  //（Apps Script 網頁應用程式部署後的 /exec 網址）有變動，要手動回來改這兩行，
+  // 改完存檔後要重新上傳這個檔案到 GitHub 才會生效。
+  const LIFF_ID = "2011433455-PfRq3s0D";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbwZISTKqJKqVGOnCQpo8s1Sa9rWf8dW3i5UVJOna8fqBtDUtpJwaQGnnVi88uDW9EUwlA/exec";
+
+  let currentUser = {};
+  let allTasks = [];
+  let allMembers = [];
+  let activeTab = 'overdue';
+
+  const $ = (id) => document.getElementById(id);
+
+  /* ---------------- 除錯記錄面板：不管卡在哪一步，畫面上都會直接列出來 ---------------- */
+  function dbg(msg) {
+    let el = document.getElementById('debug-log');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'debug-log';
+      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#111;color:#7CFC00;' +
+        'font-size:11px;line-height:1.5;padding:8px 10px;max-height:45vh;overflow:auto;' +
+        'white-space:pre-wrap;word-break:break-all;font-family:monospace;box-shadow:0 2px 6px rgba(0,0,0,.4)';
+      document.body.prepend(el);
+    }
+    const t = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+    el.innerText += '[' + t + '] ' + msg + '\n';
+    el.scrollTop = el.scrollHeight;
+  }
+  window.addEventListener('error', (e) => dbg('❌ 全域錯誤：' + e.message + '（' + (e.filename || '') + ':' + e.lineno + '）'));
+  window.addEventListener('unhandledrejection', (e) => dbg('❌ 未攔截的 Promise 錯誤：' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+  // 專門抓「被瀏覽器安全政策（CSP）擋下來的網路請求」。這種被擋下來的狀況通常不會
+  // 觸發一般的 error 或 unhandledrejection 事件，而是靜靜地失敗，導致 liff.init()
+  // 永遠卡住、卻沒有任何錯誤訊息可看。這裡直接監聽這個專門的事件來抓證據。
+  document.addEventListener('securitypolicyviolation', (e) =>
+    dbg('🚫 CSP 安全政策擋下請求！被擋的規則：' + e.violatedDirective + '，被擋的網址：' + e.blockedURI));
+
+  /* ---------------- 初始化 LIFF 登入 ---------------- */
+  async function initLIFF() {
+    dbg('★ 版本標記：BUILD-2026-09-04-G（如果你看不到這行，代表手機連到的還是舊部署版本，還沒重新部署！）');
+    dbg('頁面 JS 開始執行 initLIFF()');
+    // 這行很關鍵：Google Apps Script 常常會把 script.google.com 的網址自動轉址到
+    // 另一個網域（例如 xxx.googleusercontent.com）才真正顯示網頁內容。如果這裡印出來的
+    // 網址，跟 LINE Developers Console 裡 LIFF 應用程式登記的 Endpoint URL 網域不一樣，
+    // LIFF 有可能因為驗證不過而卡住，這行就是用來確認這件事的。
+    dbg('頁面實際網址 window.location.href = ' + window.location.href);
+    dbg('LIFF_ID = ' + (LIFF_ID || '(空白！)'));
+    dbg('GAS_URL = ' + (GAS_URL || '(空白！)'));
+    dbg('typeof liff = ' + typeof liff + '（若是 undefined，代表 LIFF SDK 沒載入成功）');
+    if (!LIFF_ID) {
+      $('user-info').innerHTML = `⚠️ 尚未設定 LIFF_ID`;
+      $('updated-at').innerText = '請到 Apps Script「專案設定→指令碼屬性」新增 LIFF_ID 後，重新整理本頁面';
+      return;
+    }
+    // 逾時保護：liff.init() 或登入流程若卡住超過 15 秒，改顯示錯誤訊息，
+    // 而不是讓畫面永遠停在「正在登入 LINE…」讓人不知道發生什麼事。
+    const timeout = (ms) => new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('逾時（' + ms / 1000 + ' 秒內未完成）')), ms));
+    try {
+      // withLoginOnExternalBrowser: true 讓「非 LINE App 內建瀏覽器」開啟時，
+      // liff.login() 也能正常觸發網頁版登入導向，而不是靜靜地什麼都不做。
+      dbg('呼叫 liff.init() 中…（最多等 15 秒）');
+      const initStartedAt = Date.now();
+      const liffInitPromise = liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
+      // 即使下面的 15 秒逾時先觸發、畫面已經顯示錯誤，這個 liffInitPromise 本身
+      // 還是會在背景繼續跑。這裡額外接一個 then/catch，把它「真正」的結果
+      // （不管幾秒後才出現）也印到除錯面板，這樣才知道它到底是「真的卡住」
+      // 還是「只是比較慢，最後其實有成功」。
+      liffInitPromise.then(
+        () => dbg('🟡 背景回報：liff.init() 其實在 ' + ((Date.now() - initStartedAt) / 1000).toFixed(1) + ' 秒後完成了（可能只是比較慢，不是真的卡住）'),
+        (e) => dbg('🟡 背景回報：liff.init() 在 ' + ((Date.now() - initStartedAt) / 1000).toFixed(1) + ' 秒後失敗，錯誤：' + (e && e.message ? e.message : String(e)))
+      );
+      await Promise.race([liffInitPromise, timeout(15000)]);
+      dbg('✅ liff.init() 完成');
+      dbg('liff.isLoggedIn() = ' + liff.isLoggedIn());
+      dbg('liff.isInClient() = ' + liff.isInClient() + '（是否在 LINE App 內建瀏覽器）');
+      if (!liff.isLoggedIn()) {
+        dbg('尚未登入，呼叫 liff.login() 導向登入頁…');
+        liff.login();
+        return;
+      }
+      dbg('呼叫 liff.getProfile() 中…（最多等 15 秒）');
+      const profile = await Promise.race([liff.getProfile(), timeout(15000)]);
+      dbg('✅ getProfile 完成，使用者：' + profile.displayName);
+      currentUser = { id: profile.userId, name: profile.displayName, avatar: profile.pictureUrl };
+      $('user-info').innerHTML = `${currentUser.avatar ? `<img src="${currentUser.avatar}">` : ''}${currentUser.name}`;
+      dbg('呼叫 loadAll() 載入任務資料…');
+      loadAll();
+    } catch (err) {
+      $('user-info').innerHTML = `❌ 登入失敗，請確認是從 LINE 聊天室的連結開啟`;
+      $('updated-at').innerText = '錯誤訊息：' + (err && err.message ? err.message : String(err));
+      dbg('❌ 發生錯誤：' + (err && err.message ? err.message : String(err)));
+      console.error(err);
+    }
+  }
+
+  /* ---------------- 共用 API 呼叫 ---------------- */
+  async function callApi(payload) {
+    const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'API 錯誤');
+    return data;
+  }
+
+  /* ---------------- 載入任務 + 成員名單 ---------------- */
+  async function loadAll(manual) {
+    const btn = $('refresh-btn');
+    btn.classList.add('spin');
+    try {
+      const [taskRes, memberRes] = await Promise.all([
+        callApi({ action: 'get' }),
+        callApi({ action: 'getMembers' })
+      ]);
+      allTasks = taskRes.tasks || [];
+      allMembers = memberRes.members || [];
+      renderMemberCheckboxes();
+      renderAllPanels();
+      $('updated-at').innerText = '最後更新：' + new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+      if (manual) showToast('✅ 已重新整理');
+    } catch (e) {
+      showToast('⚠️ 資料載入失敗，請稍後再試', true);
+      console.error(e);
+    } finally {
+      btn.classList.remove('spin');
+    }
+  }
+
+  /* ---------------- Tab 切換 ---------------- */
+  function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    $('panel-' + tab).classList.add('active');
+    document.querySelector(`.nav-btn[data-tab="${tab}"]`).classList.add('active');
+  }
+
+  /* ---------------- 日期輔助 ---------------- */
+  function todayStr() { return new Date().toLocaleDateString('sv-SE'); } // yyyy-MM-dd (local time)
+  function fmtDate(d) {
+    if (!d) return '';
+    const dt = new Date(d + 'T00:00:00');
+    const weekdays = ['日','一','二','三','四','五','六'];
+    return `${d}（週${weekdays[dt.getDay()]}）`;
+  }
+
+  function myAssignedTasks(memberId) {
+    return allTasks.filter(t => t.assigneeId === 'ALL' || String(t.assigneeId).split(',').includes(memberId));
+  }
+
+  /* ---------------- 渲染：所有面板 ---------------- */
+  function renderAllPanels() {
+    const mine = myAssignedTasks(currentUser.id).filter(t => t.status !== 'Completed');
+    const doneMine = myAssignedTasks(currentUser.id).filter(t => t.status === 'Completed');
+    const t0 = todayStr();
+
+    const overdue = mine.filter(t => t.dueDate < t0).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+    const today = mine.filter(t => t.dueDate === t0);
+    const future = mine.filter(t => t.dueDate > t0).sort((a,b) => a.dueDate.localeCompare(b.dueDate));
+
+    renderList('list-overdue', overdue, 'overdue', '目前沒有逾期或未辦事項！');
+    renderList('list-today', today, 'today', '今天沒有應辦事項，輕鬆一下～');
+    renderList('list-future', future, 'future', '');
+    renderList('list-done', doneMine.sort((a,b)=> b.dueDate.localeCompare(a.dueDate)), 'done', '尚無已完成的紀錄');
+
+    $('count-overdue').innerText = overdue.length;
+    $('count-today').innerText = today.length;
+    $('count-future').innerText = future.length;
+    $('count-done').innerText = doneMine.length;
+
+    const badge = $('badge-overdue');
+    if (overdue.length > 0) { badge.style.display = 'flex'; badge.innerText = overdue.length; }
+    else { badge.style.display = 'none'; }
+
+    renderTeamBoard();
+  }
+
+  function renderList(containerId, tasks, kind, emptyMsg) {
+    const el = $(containerId);
+    if (tasks.length === 0) {
+      el.innerHTML = emptyMsg ? `<div class="empty-state"><div class="big">${kind==='overdue' ? '🎉' : '📭'}</div>${emptyMsg}</div>` : '';
+      return;
+    }
+    el.innerHTML = tasks.map(t => taskCardHtml(t, kind)).join('');
+  }
+
+  function taskCardHtml(t, kind) {
+    const isAll = t.assigneeId === 'ALL';
+    const done = t.status === 'Completed';
+    const cls = done ? 'done' : kind;
+    return `
+      <div class="task-item ${cls}">
+        <div class="task-title">
+          ${isAll ? '<span class="badge badge-all">@ALL</span>' : ''}
+          <span>${escapeHtml(t.title)}</span>
+          <span class="badge badge-prio-${t.priority}">${t.priority}</span>
+          ${t.label ? `<span class="badge badge-label">${escapeHtml(t.label)}</span>` : ''}
+        </div>
+        <div class="task-meta">
+          👤 指派對象：<b>${escapeHtml(t.assigneeName)}</b><br>
+          ✍️ 指派人：${escapeHtml(t.creatorName)}<br>
+          📅 截止日：${fmtDate(t.dueDate)} ${kind==='overdue' && !done ? '<span class="badge badge-overdue">已逾期</span>' : ''}${kind==='today' && !done ? '<span class="badge badge-today">今天</span>' : ''}
+        </div>
+        ${done ? '' : `<div class="task-foot"><span></span><button class="btn-complete" onclick="completeTask('${t.id}')">✓ 勾選完成</button></div>`}
+      </div>`;
+  }
+
+  /* ---------------- 團隊看板 ---------------- */
+  function renderTeamBoard() {
+    const t0 = todayStr();
+    const el = $('list-team');
+    if (allMembers.length === 0) {
+      el.innerHTML = `<div class="empty-state"><div class="big">👥</div>尚未設定同仁名單，請洽管理員於 Google Sheet 的 Members 分頁新增</div>`;
+      return;
+    }
+    let totalOverdue = 0;
+    el.innerHTML = allMembers.map(m => {
+      const tasks = myAssignedTasks(m.id).filter(t => t.status !== 'Completed').sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+      const overdueCount = tasks.filter(t => t.dueDate < t0).length;
+      totalOverdue += overdueCount;
+      const rows = tasks.length === 0
+        ? `<div class="mini-task"><span class="t" style="color:var(--muted)">目前沒有待辦事項</span></div>`
+        : tasks.map(t => `
+            <div class="mini-task ${t.dueDate < t0 ? 'od' : ''}">
+              <span class="t">${t.assigneeId==='ALL' ? '<b>[@ALL]</b> ' : ''}${escapeHtml(t.title)} <span class="badge badge-prio-${t.priority}">${t.priority}</span></span>
+              <span class="d">${t.dueDate}</span>
+            </div>`).join('');
+      return `
+        <div class="team-member">
+          <div class="team-member-head" onclick="this.nextElementSibling.classList.toggle('open')">
+            <span class="name">${escapeHtml(m.name)}</span>
+            <span class="stats">
+              ${overdueCount > 0 ? `<span class="od">逾期 ${overdueCount}</span>` : ''}
+              <span>待辦 ${tasks.length}</span>
+              <span>▾</span>
+            </span>
+          </div>
+          <div class="team-tasks">${rows}</div>
+        </div>`;
+    }).join('');
+    $('count-team-overdue').innerText = `逾期 ${totalOverdue}`;
+  }
+
+  /* ---------------- 成員勾選清單（新增任務用） ---------------- */
+  function renderMemberCheckboxes() {
+    const el = $('member-checkboxes');
+    if (allMembers.length === 0) {
+      el.innerHTML = `<div class="member-empty">尚未設定同仁名單，請洽管理員</div>`;
+      return;
+    }
+    const allHtml = `
+      <label class="checkbox-item" style="color:#722ed1;">
+        <input type="checkbox" id="chk-all" onchange="toggleAll(this)">
+        <b>@ALL 所有人</b>
+      </label>
+      <hr style="border:none;border-top:1px solid #eee;margin:6px 0;">`;
+    const memberHtml = allMembers.map(m => {
+      const placeholder = !m.id || m.id.startsWith('請填入');
+      return `
+        <label class="checkbox-item ${placeholder ? 'disabled' : ''}">
+          <input type="checkbox" class="member-checkbox" value="${escapeHtml(m.id)}" data-name="${escapeHtml(m.name)}" ${placeholder ? 'disabled' : ''}>
+          ${escapeHtml(m.name)}
+          ${placeholder ? '<span class="warn-tag">⚠️ 未設定ID</span>' : ''}
+        </label>`;
+    }).join('');
+    el.innerHTML = allHtml + memberHtml;
+  }
+
+  function toggleAll(source) {
+    document.querySelectorAll('.member-checkbox').forEach(cb => {
+      cb.checked = false;
+      const isPlaceholder = cb.closest('.checkbox-item').classList.contains('disabled');
+      cb.disabled = source.checked ? true : isPlaceholder;
+    });
+  }
+
+  /* ---------------- 新增任務 ---------------- */
+  function clearFormErrors() {
+    ['title','assignee','date'].forEach(k => $('err-' + k).classList.remove('show'));
+    $('task-title').classList.remove('field-error');
+    $('task-date').classList.remove('field-error');
+  }
+
+  async function submitNewTask() {
+    clearFormErrors();
+    const title = $('task-title').value.trim();
+    const dueDate = $('task-date').value;
+    const priority = $('task-priority').value;
+    const label = $('task-label').value.trim();
+    const isAllChecked = $('chk-all') && $('chk-all').checked;
+    const selectedMembers = Array.from(document.querySelectorAll('.member-checkbox:checked'));
+
+    let hasError = false;
+    if (!title) { $('err-title').classList.add('show'); $('task-title').classList.add('field-error'); hasError = true; }
+    if (!dueDate) { $('err-date').classList.add('show'); $('task-date').classList.add('field-error'); hasError = true; }
+    if (!isAllChecked && selectedMembers.length === 0) { $('err-assignee').classList.add('show'); hasError = true; }
+    if (hasError) {
+      showToast('⚠️ 請檢查表單內容', true);
+      const firstError = document.querySelector('.error-text.show');
+      if (firstError) firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
+    let assigneeIds, assigneeNames;
+    if (isAllChecked) {
+      assigneeIds = 'ALL';
+      assigneeNames = '@ALL 所有人';
+    } else {
+      assigneeIds = selectedMembers.map(cb => cb.value);
+      assigneeNames = selectedMembers.map(cb => cb.dataset.name);
+    }
+
+    const payload = {
+      action: 'add',
+      title, dueDate, priority, label,
+      assigneeIds, assigneeNames,
+      creatorName: currentUser.name
+    };
+
+    const btn = $('submit-btn');
+    btn.disabled = true;
+    btn.innerText = '傳送中…';
+    try {
+      await callApi(payload);
+      showToast('🎉 任務指派成功！通知已發送');
+      $('task-title').value = '';
+      $('task-label').value = '';
+      $('task-date').value = '';
+      if ($('chk-all')) { $('chk-all').checked = false; toggleAll({ checked: false }); }
+      await loadAll();
+      switchTab('today');
+    } catch (e) {
+      showToast('❌ 送出失敗，請稍後再試', true);
+      console.error(e);
+    } finally {
+      btn.disabled = false;
+      btn.innerText = '送出指派任務';
+    }
+  }
+
+  /* ---------------- 完成任務 ---------------- */
+  async function completeTask(taskId) {
+    if (!confirm('確定要將此事項標示為完成嗎？')) return;
+    try {
+      await callApi({ action: 'complete', taskId });
+      showToast('✅ 已標示為完成');
+      await loadAll();
+    } catch (e) {
+      showToast('❌ 操作失敗，請稍後再試', true);
+    }
+  }
+
+  /* ---------------- 小工具 ---------------- */
+  function showToast(msg, isError) {
+    const t = $('toast');
+    t.innerText = msg;
+    t.classList.toggle('error', !!isError);
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+
+  function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  // 截止日期不可選過去日期
+  window.addEventListener('DOMContentLoaded', () => {
+    $('task-date').min = todayStr();
+  });
+
+  initLIFF();
+</script>
+</body>
+</html>
