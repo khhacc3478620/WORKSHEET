@@ -369,9 +369,34 @@
 
   /* ---------------- 共用 API 呼叫 ---------------- */
   async function callApi(payload) {
-    const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'API 錯誤');
+    dbg('📡 呼叫 API：action=' + payload.action);
+    let res;
+    try {
+      res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify(payload) });
+    } catch (netErr) {
+      dbg('❌ 網路請求本身失敗（可能是跨網域 CORS 被擋，或網路問題）：' + (netErr && netErr.message ? netErr.message : String(netErr)));
+      throw netErr;
+    }
+    dbg('📡 API 回應狀態：HTTP ' + res.status + '（' + payload.action + '）');
+    let text;
+    try {
+      text = await res.text();
+    } catch (readErr) {
+      dbg('❌ 讀取回應內容失敗：' + (readErr && readErr.message ? readErr.message : String(readErr)));
+      throw readErr;
+    }
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      dbg('❌ 回應不是合法的 JSON，原始內容前 300 字：' + text.slice(0, 300));
+      throw new Error('回應格式錯誤：' + text.slice(0, 200));
+    }
+    if (!data.ok) {
+      dbg('❌ API 回傳失敗（' + payload.action + '）：' + (data.error || '未知錯誤'));
+      throw new Error(data.error || 'API 錯誤');
+    }
+    dbg('✅ API 成功（' + payload.action + '）');
     return data;
   }
 
