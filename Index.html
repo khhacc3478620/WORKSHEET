@@ -280,6 +280,9 @@
 
   let currentUser = {};
   let allTasks = [];
+  let idToken = null; // 這次登入從 LINE 拿到的身分憑證，每次呼叫後端 API 都要附上，
+                       // 讓後端可以跟 LINE 官方確認「這真的是一次有效的 LINE 登入」，
+                       // 不是隨便什麼人直接打這個網址進來的。
   let allMembers = [];
   let activeTab = 'overdue';
 
@@ -377,6 +380,8 @@
       dbg('✅ getProfile 完成，使用者：' + profile.displayName);
       currentUser = { id: profile.userId, name: profile.displayName, avatar: profile.pictureUrl };
       $('user-info').innerHTML = `${currentUser.avatar ? `<img src="${currentUser.avatar}">` : ''}${currentUser.name}`;
+      idToken = liff.getIDToken();
+      dbg(idToken ? '✅ 取得身分憑證（idToken），之後呼叫 API 會附上這個做驗證' : '⚠️ 沒有取得 idToken，之後呼叫 API 可能會被後端拒絕');
       dbg('呼叫 loadAll() 載入任務資料…');
       loadAll();
     } catch (err) {
@@ -389,6 +394,7 @@
 
   /* ---------------- 共用 API 呼叫 ---------------- */
   async function callApi(payload) {
+    payload = Object.assign({}, payload, { idToken: idToken });
     dbg('📡 呼叫 API：action=' + payload.action);
     let res;
     try {
